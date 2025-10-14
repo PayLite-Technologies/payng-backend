@@ -1,0 +1,334 @@
+#!/bin/bash
+
+set -e
+
+echo "🚀 Bootstrapping Payng Project..."
+
+# Colors for output
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Check if bun is installed
+if ! command -v bun &> /dev/null; then
+    echo "${YELLOW}Bun not found. Installing Bun...${NC}"
+    curl -fsSL https://bun.sh/install | bash
+    source ~/.bashrc
+fi
+
+echo "${BLUE}Creating project structure...${NC}"
+
+# Create main directories
+mkdir -p src/{core,middlewares,modules,routes,utils,types,db/{schema,migrations,seed}}
+mkdir -p frontend/src/{assets,components/{common,layout,auth,student,parent,admin},pages/{auth,parent,student,admin},hooks,services,store,types,utils,styles}
+mkdir -p frontend/public
+mkdir -p docs/{api,architecture,deployment}
+mkdir -p tests/{unit,integration,e2e}
+mkdir -p scripts
+mkdir -p .github/workflows
+mkdir -p .husky
+
+# Create module directories
+modules=(
+    "auth" "user" "school" "student" "admin" "fee" "payment" 
+    "receipt" "notification" "reporting" "reconciliation" "cron"
+)
+
+for module in "${modules[@]}"; do
+    mkdir -p "src/modules/$module"
+done
+
+# Create payment gateway directory
+mkdir -p src/modules/payment/gateways
+
+# Create notification subdirectories
+mkdir -p src/modules/notification/{email/templates,sms,whatsapp}
+
+# Create receipt templates directory
+mkdir -p src/modules/receipt/templates
+
+echo "${GREEN}✓ Directory structure created${NC}"
+
+# Initialize package.json for backend
+echo "${BLUE}Initializing backend package.json...${NC}"
+cat > package.json << 'EOF'
+{
+  "name": "payng-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/server.ts",
+    "start": "bun run src/server.ts",
+    "cron": "bun run src/cron.ts",
+    "build": "bun build src/server.ts --outdir ./dist --target bun",
+    "db:generate": "drizzle-kit generate:pg",
+    "db:migrate": "bun run src/db/migrate.ts",
+    "db:push": "drizzle-kit push:pg",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "bun run src/db/seed/seed.ts",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "prepare": "husky install"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "drizzle-orm": "^0.29.0",
+    "postgres": "^3.4.3",
+    "lucia": "^3.0.0",
+    "oslo": "^1.1.2",
+    "@node-rs/argon2": "^1.7.0",
+    "resend": "^3.0.0",
+    "pino": "^8.17.0",
+    "pino-pretty": "^10.3.0",
+    "zod": "^3.22.4",
+    "dotenv": "^16.3.1",
+    "pdf-lib": "^1.17.1",
+    "@hono/zod-validator": "^0.2.0",
+    "cron": "^3.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "drizzle-kit": "^0.20.0",
+    "typescript": "^5.3.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.55.0",
+    "prettier": "^3.1.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0"
+  }
+}
+EOF
+
+echo "${GREEN}✓ Backend package.json created${NC}"
+
+# Initialize frontend package.json
+echo "${BLUE}Initializing frontend package.json...${NC}"
+cat > frontend/package.json << 'EOF'
+{
+  "name": "payng-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\""
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "@tanstack/react-query": "^5.12.0",
+    "axios": "^1.6.0",
+    "zustand": "^4.4.7",
+    "lucide-react": "^0.294.0",
+    "date-fns": "^2.30.0",
+    "react-hook-form": "^7.48.2",
+    "@hookform/resolvers": "^3.3.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "vite": "^5.0.0",
+    "typescript": "^5.3.0",
+    "tailwindcss": "^3.3.6",
+    "postcss": "^8.4.32",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.55.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "prettier": "^3.1.0"
+  }
+}
+EOF
+
+echo "${GREEN}✓ Frontend package.json created${NC}"
+
+# Create .env.example
+echo "${BLUE}Creating .env.example...${NC}"
+cat > .env.example << 'EOF'
+# Server Configuration
+NODE_ENV=development
+PORT=3000
+HOST=localhost
+
+# Database Configuration
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/payng
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=payng
+
+# Authentication
+SESSION_SECRET=your-super-secret-session-key-change-this-in-production
+JWT_SECRET=your-jwt-secret-key-change-this
+
+# Payment Gateway - Arca
+ARCA_API_KEY=your-arca-api-key
+ARCA_SECRET_KEY=your-arca-secret-key
+ARCA_BASE_URL=https://api.arca.africa
+ARCA_WEBHOOK_SECRET=your-arca-webhook-secret
+
+# Payment Gateway - Flutterwave (Fallback)
+FLUTTERWAVE_PUBLIC_KEY=your-flutterwave-public-key
+FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret-key
+FLUTTERWAVE_ENCRYPTION_KEY=your-flutterwave-encryption-key
+
+# Email Service (Resend)
+RESEND_API_KEY=your-resend-api-key
+FROM_EMAIL=noreply@payng.com
+
+# SMS Service
+SMS_PROVIDER=termii
+SMS_API_KEY=your-sms-api-key
+SMS_SENDER_ID=Payng
+
+# WhatsApp Service
+WHATSAPP_API_KEY=your-whatsapp-api-key
+WHATSAPP_BUSINESS_ID=your-business-id
+
+# Frontend URL
+FRONTEND_URL=http://localhost:5173
+
+# File Upload
+MAX_FILE_SIZE=5242880
+UPLOAD_DIR=./uploads
+
+# Logging
+LOG_LEVEL=debug
+
+# Cron Jobs
+ENABLE_CRON=true
+PAYMENT_REMINDER_CRON=0 9 * * *
+FEE_STATUS_CHECK_CRON=0 8 * * *
+
+# Security
+CORS_ORIGIN=http://localhost:5173
+RATE_LIMIT_WINDOW=15
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Encryption
+ENCRYPTION_KEY=your-32-character-encryption-key
+EOF
+
+echo "${GREEN}✓ .env.example created${NC}"
+
+# Create .gitignore
+echo "${BLUE}Creating .gitignore...${NC}"
+cat > .gitignore << 'EOF'
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.log
+
+# Production
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Uploads
+uploads/
+temp/
+
+# Database
+*.db
+*.sqlite
+
+# Cache
+.cache/
+.parcel-cache/
+EOF
+
+echo "${GREEN}✓ .gitignore created${NC}"
+
+# Install dependencies
+echo "${BLUE}Installing backend dependencies...${NC}"
+bun install
+
+echo "${BLUE}Installing frontend dependencies...${NC}"
+cd frontend && bun install && cd ..
+
+# Initialize husky
+echo "${BLUE}Setting up husky...${NC}"
+bunx husky install
+echo "bunx lint-staged" > .husky/pre-commit
+chmod +x .husky/pre-commit
+
+# Create lint-staged config
+cat > .lintstagedrc.json << 'EOF'
+{
+  "*.{ts,tsx}": ["eslint --fix", "prettier --write"]
+}
+EOF
+
+echo "${GREEN}✓ Husky configured${NC}"
+
+# Initialize git if not already initialized
+if [ ! -d .git ]; then
+    echo "${BLUE}Initializing git repository...${NC}"
+    git init
+    echo "${GREEN}✓ Git repository initialized${NC}"
+fi
+
+echo ""
+echo "${GREEN}========================================${NC}"
+echo "${GREEN}✨ Payng Project Bootstrap Complete! ✨${NC}"
+echo "${GREEN}========================================${NC}"
+echo ""
+echo "${BLUE}Next steps:${NC}"
+echo "1. Copy .env.example to .env and update with your values"
+echo "   ${YELLOW}cp .env.example .env${NC}"
+echo ""
+echo "2. Start PostgreSQL using Docker Compose"
+echo "   ${YELLOW}docker-compose up -d postgres${NC}"
+echo ""
+echo "3. Generate and run database migrations"
+echo "   ${YELLOW}bun run db:generate${NC}"
+echo "   ${YELLOW}bun run db:migrate${NC}"
+echo ""
+echo "4. Start the development servers"
+echo "   Backend:  ${YELLOW}bun run dev${NC}"
+echo "   Frontend: ${YELLOW}cd frontend && bun run dev${NC}"
+echo ""
+echo "${GREEN}Happy coding! 🚀${NC}"
+EOF
+
+chmod +x scripts/bootstrap.sh
