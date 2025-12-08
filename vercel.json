@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "src/index.ts"
+    }
+  ],
+  "functions": {
+    "src/index.ts": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/payment-reminders",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/fee-status-check",
+      "schedule": "0 8 * * *"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
