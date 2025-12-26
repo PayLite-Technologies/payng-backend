@@ -25,13 +25,44 @@ app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: [
-      config.FRONTEND_URL,
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "https://payng.ng",
-      "https://*.payng.ng",
-    ],
+    origin: (origin) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return true;
+      
+      // Development origins
+      const devOrigins = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5173",
+        config.FRONTEND_URL,
+      ];
+      
+      // Production origins (from environment or defaults)
+      const prodOrigins = [
+        "https://payng.ng",
+        "https://www.payng.ng",
+        "https://app.payng.ng",
+        process.env.FRONTEND_URL,
+      ].filter(Boolean);
+      
+      const allowedOrigins = [
+        ...devOrigins,
+        ...prodOrigins,
+        // Allow any subdomain of payng.ng
+        /^https:\/\/.*\.payng\.ng$/,
+      ];
+      
+      // Check if origin matches any allowed origin
+      return allowedOrigins.some((allowed) => {
+        if (typeof allowed === "string") {
+          return origin === allowed;
+        }
+        if (allowed instanceof RegExp) {
+          return allowed.test(origin);
+        }
+        return false;
+      });
+    },
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: [
@@ -42,6 +73,7 @@ app.use(
       "X-Requested-With",
       "X-API-Key",
       "X-Session-Id",
+      "X-User-Role",
     ],
     exposeHeaders: ["X-Total-Count", "X-Page-Count"],
   }),
